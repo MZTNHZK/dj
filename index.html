@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>xizhongtong奚仲通</title>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root {
+            --md-primary: #0061a4;
+            --md-primary-con: #d1e4ff;
+            --md-surface: #fdfcff;
+            --md-surface-v: #dfe2eb;
+            --md-on-surface: #1a1c1e;
+            --m3-easing: cubic-bezier(0.2, 0, 0, 1);
+        }
+
+        body { font-family: 'Google Sans', sans-serif; background: var(--md-surface); margin: 0; padding: 0; overflow: hidden; }
+
+        /* 登录屏 */
+        #login-screen {
+            position: fixed; inset: 0; background: var(--md-surface); z-index: 2000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px;
+        }
+
+        /* 页面切换 */
+        .page-container { 
+            position: absolute; inset: 0; bottom: 80px; padding: 20px; 
+            display: none; flex-direction: column; overflow-y: auto; background: var(--md-surface);
+        }
+        .page-container.active { display: flex; animation: slideIn 0.4s var(--m3-easing); }
+        @keyframes slideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+
+        /* AI 深度集成卡片 */
+        .ai-box { background: linear-gradient(135deg, #101419, #2c3e50); color: white; border-radius: 24px; padding: 20px; margin-bottom: 16px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        #ai-resp { font-size: 13px; line-height: 1.6; margin: 12px 0; opacity: 0.9; max-height: 150px; overflow-y: auto; }
+        
+        .ai-input-group { display: flex; gap: 8px; background: rgba(255,255,255,0.1); padding: 8px 12px; border-radius: 12px; }
+        .ai-input-group input { background: none; border: none; color: white; flex: 1; outline: none; font-size: 14px; }
+
+        /* 通用组件 */
+        .card-m3 { background: var(--md-surface-v); border-radius: 24px; padding: 20px; margin-bottom: 16px; }
+        .btn-m3 { 
+            height: 52px; border-radius: 26px; border: none; background: var(--md-primary); color: white;
+            font-size: 14px; font-weight: 500; cursor: pointer; width: 100%; transition: 0.2s;
+        }
+        .btn-m3:active { transform: scale(0.97); }
+
+        /* 底部导航 - 纯文字版 */
+        .bottom-nav { 
+            position: fixed; bottom: 0; width: 100%; height: 80px; 
+            background: var(--md-surface-v); display: flex; z-index: 100;
+        }
+        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #43474e; cursor: pointer; }
+        .nav-item.active { color: var(--md-primary); }
+        .nav-indicator { width: 56px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; margin-bottom: 4px; transition: 0.3s; }
+        .nav-item.active .nav-indicator { background-color: var(--md-primary-con); }
+        .nav-text { font-size: 11px; font-weight: 500; }
+
+        #reader { width: 100%; border-radius: 20px; overflow: hidden; background: #000; }
+    </style>
+</head>
+<body>
+
+    <div id="login-screen">
+        <h1 style="font-size: 36px; margin-bottom: 8px;">登录</h1>
+        <p style="opacity: 0.5; margin-bottom: 32px;">欢迎回来</p>
+        <input type="text" id="u" placeholder="账户名" style="width:100%; padding:16px; border-radius:12px; border:1px solid #ccc; margin-bottom:12px;">
+        <input type="password" id="p" placeholder="密码" style="width:100%; padding:16px; border-radius:12px; border:1px solid #ccc; margin-bottom:24px;">
+        <button class="btn-m3" onclick="doLogin()">确认登录</button>
+    </div>
+
+    <div id="app" style="display:none;">
+        
+        <div id="page-home" class="page-container active">
+            <div class="ai-box">
+                <div style="font-size: 12px; opacity: 0.7; letter-spacing: 1px;">AI助手</div>
+                <div id="ai-resp">您好，我是奚仲通 AI 助手，已为您接入 DeepSeek 模型。</div>
+                <div class="ai-input-group">
+                    <input type="text" id="ai-q" placeholder="输入问题...">
+                    <button onclick="askDeepSeek()" style="background:none; border:none; color:var(--md-primary-con); font-weight:bold; cursor:pointer;">发送</button>
+                </div>
+            </div>
+
+            <div class="card-m3">
+                <div style="font-weight: 500; margin-bottom: 12px; font-size: 14px;">校园卡感应</div>
+                <button class="btn-m3" style="background:#fff; color:var(--md-primary); border:1px solid var(--md-primary);" onclick="readNFC()">开始读取</button>
+                <div style="margin-top:12px; display:flex; gap:8px;">
+                    <input type="text" id="nfc-url" value="https://" style="flex:1; padding:10px; border-radius:10px; border:1px solid #ccc; font-size:13px;">
+                    <button class="btn-m3" style="width:70px;" onclick="writeNFC()">写入</button>
+                </div>
+            </div>
+
+            <div class="card-m3">
+                <div id="reader"></div>
+                <button class="btn-m3" style="margin-top: 12px;" onclick="startScan()">扫描识别码</button>
+            </div>
+
+            <div class="card-m3" onclick="window.location.href='https://basic.smartedu.cn'" style="background: var(--md-primary-con); display:flex; align-items:center; justify-content:space-between;">
+                <span style="font-weight:500;">智慧学习教育平台</span>
+                <span style="font-size:12px;">跳转</span>
+            </div>
+        </div>
+
+        <div id="page-chat" class="page-container">
+            <h1>联系人</h1>
+            <div class="card-m3" style="background:white; border:1px solid #eee;" onclick="alert('连接中...')">
+                <b>Yresr</b><br><small style="color:gray;">张辰宇</small>
+            </div>
+            <div class="card-m3" style="background:white; border:1px solid #eee;" onclick="alert('服务忙...')">
+                <b>MZTN</b><br><small style="color:gray;">吴涛</small>
+            </div>
+        </div>
+
+        <div id="page-user" class="page-container">
+            <h1>个人中心</h1>
+            <div class="card-m3" style="background:white; border:1px solid #eee; text-align:center;">
+                <div style="font-size:18px; font-weight:500;">奚仲通</div>
+                <div style="font-size:12px; color:green; margin-top:4px;">beta版本（1.0.10）有效</div>
+            </div>
+
+            <button class="btn-m3" onclick="window.location.href='https://work.weixin.qq.com/kfid/kfc88c2e65dad02bf74'" style="background:#07c160; margin-top:12px;">在线客服</button>
+            <button class="btn-m3" onclick="window.location.href='https://xizhongtong.mysxl.cn'" style="background:none; border:1px solid #ccc; color:var(--md-primary); margin-top:12px;">滚回正式版</button>
+            <button class="btn-m3" onclick="location.reload()" style="background:none; color:red; margin-top:12px;">退出登录</button>
+        </div>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="navTo('page-home', this)">
+                <div class="nav-indicator">HOME</div>
+                <span class="nav-text">发现</span>
+            </div>
+            <div class="nav-item" onclick="navTo('page-chat', this)">
+                <div class="nav-indicator">CHAT</div>
+                <span class="nav-text">消息</span>
+            </div>
+            <div class="nav-item" onclick="navTo('page-user', this)">
+                <div class="nav-indicator">USER</div>
+                <span class="nav-text">我的</span>
+            </div>
+        </nav>
+    </div>
+
+    <script>
+        const API_KEY = "sk-e57a555c8dce47e2865e89cfc584c464";
+
+        function doLogin() {
+            if(u.value === "奚仲通" && p.value === "114514") {
+                document.getElementById('login-screen').style.display = 'none';
+                document.getElementById('app').style.display = 'block';
+            } else { alert("验证失败"); }
+        }
+
+        function navTo(id, el) {
+            document.querySelectorAll('.page-container').forEach(p => p.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
+        }
+
+        // --- DeepSeek API 核心集成 ---
+        async function askDeepSeek() {
+            const query = document.getElementById('ai-q').value;
+            const respBox = document.getElementById('ai-resp');
+            if(!query) return;
+
+            respBox.innerText = "DeepSeek 正在思考...";
+            
+            try {
+                const response = await fetch("https://api.deepseek.com/chat/completions", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${API_KEY}`
+                    },
+                    body: JSON.stringify({
+                        model: "deepseek-chat",
+                        messages: [
+                            { role: "system", content: "你是奚仲通即时通讯软件的AI。用简洁、专业的语气回答。" },
+                            { role: "user", content: query }
+                        ],
+                        stream: false
+                    })
+                });
+
+                const data = await response.json();
+                respBox.innerText = data.choices[0].message.content;
+            } catch (err) {
+                respBox.innerText = "连接 DeepSeek 失败，请检查网络或 API 状态。";
+            }
+            document.getElementById('ai-q').value = "";
+        }
+
+        // --- NFC 模块 ---
+        async function readNFC() {
+            if (!('NDEFReader' in window)) return alert("此环境不支持 NFC");
+            try {
+                const ndef = new NDEFReader();
+                await ndef.scan();
+                alert("已开启感应，请贴合标签");
+                ndef.onreading = e => {
+                    const dec = new TextDecoder();
+                    const url = dec.decode(e.message.records[0].data);
+                    window.location.href = url;
+                };
+            } catch (e) { alert("NFC 启动异常"); }
+        }
+
+        async function writeNFC() {
+            const url = document.getElementById('nfc-url').value;
+            try {
+                const ndef = new NDEFReader();
+                await ndef.write(url);
+                alert("请贴合 NFC 标签进行写入");
+            } catch (e) { alert("写入失败"); }
+        }
+
+        // --- 扫码模块 ---
+        let html5QrCode;
+        function startScan() {
+            html5QrCode = new Html5Qrcode("reader");
+            html5QrCode.start({ facingMode: "environment" }, { fps: 15, qrbox: 250 }, (txt) => {
+                html5QrCode.stop();
+                window.location.replace(txt);
+            });
+        }
+    </script>
+</body>
+</html>
