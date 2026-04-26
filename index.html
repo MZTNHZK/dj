@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>奚仲通 Pro - 数字化集成中心</title>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root { --md-primary: #0061a4; --md-primary-con: #d1e4ff; --m3-easing: cubic-bezier(0.05, 0.7, 0.1, 1); }
+        body { font-family: 'Google Sans', sans-serif; background: #f7f9fc; margin: 0; padding: 0; overflow: hidden; }
+        .auth-screen { position: fixed; inset: 0; background: white; z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; transition: 0.6s var(--m3-easing); }
+        .page-container { position: absolute; inset: 0; bottom: 84px; display: none; flex-direction: column; overflow-y: auto; background: #f7f9fc; }
+        .page-container.active { display: flex; animation: slideIn 0.4s var(--m3-easing); }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        input { width: 100%; padding: 16px; border-radius: 12px; border: 1px solid #ddd; margin-bottom: 12px; box-sizing: border-box; outline: none; }
+        .btn-m3 { width: 100%; padding: 16px; border-radius: 30px; border: none; background: var(--md-primary); color: white; font-weight: bold; cursor: pointer; }
+        .header-ai { background: #1a1c1e; color: white; padding: 40px 24px 30px; border-radius: 0 0 32px 32px; }
+        .matrix-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 20px; }
+        .matrix-card { background: white; border-radius: 24px; padding: 20px; text-align: center; border: 1px solid #eee; cursor: pointer; }
+        .post-card { background: white; margin: 0 16px 12px; border-radius: 20px; padding: 16px; border: 1px solid #eee; }
+        #chat-view { position: fixed; inset: 0; background: #f0f2f5; z-index: 2500; display: none; flex-direction: column; }
+        .bubble { max-width: 75%; padding: 12px 16px; border-radius: 18px; font-size: 14px; margin-bottom: 8px; }
+        .bubble.sent { align-self: flex-end; background: var(--md-primary); color: white; border-bottom-right-radius: 4px; }
+        .bubble.recv { align-self: flex-start; background: white; border-bottom-left-radius: 4px; }
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; height: 84px; background: white; display: flex; border-top: 1px solid #eee; }
+        .nav-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; color: #74777f; }
+        .nav-item.active { color: var(--md-primary); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen" class="auth-screen">
+        <div id="login-box" style="width:100%; max-width:320px; text-align:center;">
+            <h1 style="color:var(--md-primary);">奚仲通 Pro</h1>
+            <input type="text" id="login-u" placeholder="账户名">
+            <input type="password" id="login-p" placeholder="密码">
+            <button class="btn-m3" onclick="handleAuth('login')">登录系统</button>
+            <p style="font-size:13px; margin-top:20px; color:var(--md-primary); cursor:pointer;" onclick="toggleAuth(true)">注册新账户</p>
+        </div>
+        <div id="register-box" style="display:none; width:100%; max-width:320px; text-align:center;">
+            <h1 style="color:var(--md-primary);">用户注册</h1>
+            <input type="text" id="reg-u" placeholder="新账户名">
+            <input type="password" id="reg-p" placeholder="设置密码">
+            <button class="btn-m3" onclick="handleAuth('register')">完成注册</button>
+            <p style="font-size:13px; margin-top:20px; color:var(--md-primary); cursor:pointer;" onclick="toggleAuth(false)">返回登录</p>
+        </div>
+    </div>
+
+    <div id="app" style="display:none;">
+        <div id="page-home" class="page-container active">
+            <div class="header-ai">
+                <div id="ai-resp">你好，奚仲通。DeepSeek 准备就绪。</div>
+                <div style="background:rgba(255,255,255,0.1); border-radius:16px; display:flex; padding:4px 16px;">
+                    <input type="text" id="ai-q" style="background:none; border:none; color:white; margin:0;" placeholder="问问 AI...">
+                    <button onclick="askAI()" style="background:none; border:none; color:white; font-size:20px;">➤</button>
+                </div>
+            </div>
+            <div class="matrix-grid">
+                <div class="matrix-card" onclick="alert('扫码功能需 HTTPS 环境')">📷<br><small>极速扫码</small></div>
+                <div class="matrix-card" onclick="alert('NFC 功能需手机硬件支持')">🏷️<br><small>感应读取</small></div>
+                <div class="matrix-card" onclick="window.location.href='https://basic.smartedu.cn'">🎓<br><small>智慧学习</small></div>
+            </div>
+        </div>
+
+        <div id="page-community" class="page-container">
+            <h1 style="padding:20px;">社区交流</h1>
+            <div id="post-list"></div>
+            <button class="btn-m3" style="width:60px; height:60px; position:fixed; bottom:100px; right:20px;" onclick="addPost()">+</button>
+        </div>
+
+        <div id="page-chat" class="page-container">
+            <h1 style="padding:20px;">联系人</h1>
+            <div id="friend-list">
+                <div class="post-card" onclick="openChat('公共大厅')">💬 公共聊天大厅</div>
+            </div>
+            <div id="chat-view">
+                <div style="height:64px; background:white; display:flex; align-items:center; padding:0 16px; border-bottom:1px solid #eee;">
+                    <button onclick="closeChat()" style="background:none; border:none; font-size:20px;">←</button>
+                    <b id="c-title" style="margin-left:12px;">聊天中</b>
+                </div>
+                <div id="c-flow" style="flex:1; padding:20px; overflow-y:auto; display:flex; flex-direction:column;"></div>
+                <div style="padding:12px; background:white; display:flex; gap:10px;">
+                    <input type="text" id="c-input" placeholder="输入消息...">
+                    <button class="btn-m3" style="width:80px;" onclick="sendMsg()">发送</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="page-user" class="page-container">
+            <h1 style="padding:20px;">我的</h1>
+            <div style="padding:20px; text-align:center;">
+                <div style="font-size:50px;">👤</div>
+                <b id="u-name" style="font-size:20px;">用户名</b>
+                <button class="btn-m3" style="margin-top:20px; background:#07c160;" onclick="window.location.href='https://work.weixin.qq.com/kfid/kfc88c2e65dad02bf74'">联系客服</button>
+                <button class="btn-m3" style="margin-top:12px; background:none; border:1px solid #ccc; color:#666;" onclick="window.location.href='https://xizhongtong.mysxl.cn'">返回正式版</button>
+            </div>
+        </div>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="navTo('page-home', this)">发现</div>
+            <div class="nav-item" onclick="navTo('page-community', this)">社区</div>
+            <div class="nav-item" onclick="navTo('page-chat', this)">消息</div>
+            <div class="nav-item" onclick="navTo('page-user', this)">我的</div>
+        </nav>
+    </div>
+
+    <script>
+        const API = "http://localhost:3000";
+        let socket, currentUser;
+
+        function toggleAuth(isReg) {
+            document.getElementById('login-box').style.display = isReg ? 'none' : 'block';
+            document.getElementById('register-box').style.display = isReg ? 'block' : 'none';
+        }
+
+        async function handleAuth(type) {
+            const u = document.getElementById(type === 'login' ? 'login-u' : 'reg-u').value;
+            const p = document.getElementById(type === 'login' ? 'login-p' : 'reg-p').value;
+            try {
+                const res = await fetch(`${API}/api/${type}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (type === 'login') {
+                        currentUser = u;
+                        document.getElementById('auth-screen').style.transform = 'translateY(-100%)';
+                        document.getElementById('app').style.display = 'block';
+                        document.getElementById('u-name').innerText = u;
+                        initSocket();
+                        loadPosts();
+                    } else { alert("注册成功，请登录"); toggleAuth(false); }
+                } else { alert(data.message || "操作失败"); }
+            } catch (e) { alert("后端未启动，请检查 D 盘服务器"); }
+        }
+
+        function initSocket() {
+            socket = io(API);
+            socket.on('receive_msg', (data) => {
+                const b = document.createElement('div');
+                b.className = `bubble ${data.sender === currentUser ? 'sent' : 'recv'}`;
+                b.innerText = `${data.sender}: ${data.text}`;
+                document.getElementById('c-flow').appendChild(b);
+                document.getElementById('c-flow').scrollTop = 9999;
+            });
+        }
+
+        function sendMsg() {
+            const val = document.getElementById('c-input').value;
+            if (val) {
+                socket.emit('send_msg', { sender: currentUser, text: val });
+                document.getElementById('c-input').value = "";
+            }
+        }
+
+        async function loadPosts() {
+            try {
+                const res = await fetch(`${API}/api/posts`);
+                const posts = await res.json();
+                document.getElementById('post-list').innerHTML = posts.map(p => `
+                    <div class="post-card"><b>${p.author}</b>: ${p.content}</div>
+                `).join('');
+            } catch (e) {}
+        }
+
+        async function addPost() {
+            const c = prompt("想说什么？");
+            if (c) {
+                await fetch(`${API}/api/posts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ author: currentUser, content: c })
+                });
+                loadPosts();
+            }
+        }
+
+        function navTo(id, el) {
+            document.querySelectorAll('.page-container').forEach(p => p.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            el.classList.add('active');
+        }
+        function openChat(n) { document.getElementById('chat-view').style.display = 'flex'; }
+        function closeChat() { document.getElementById('chat-view').style.display = 'none'; }
+    </script>
+</body>
+</html>
