@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>奚仲通 Pro</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        :root { --md-primary: #0061a4; }
+        body { font-family: sans-serif; background: #f7f9fc; margin: 0; padding: 0; }
+        .auth-screen { position: fixed; inset: 0; background: white; z-index: 5000; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; transition: 0.5s; }
+        .page { display: none; padding-bottom: 90px; }
+        .page.active { display: block; }
+        input { width: 100%; padding: 15px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; box-sizing: border-box; }
+        .btn { width: 100%; padding: 15px; background: var(--md-primary); color: white; border: none; border-radius: 25px; font-weight: bold; }
+        .nav { position: fixed; bottom: 0; width: 100%; height: 70px; background: white; display: flex; border-top: 1px solid #eee; }
+        .nav-item { flex: 1; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+        .post { background: white; margin: 10px; padding: 15px; border-radius: 15px; border: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+    <div id="auth" class="auth-screen">
+        <h2>奚仲通 Pro</h2>
+        <input type="text" id="u" placeholder="用户名">
+        <input type="password" id="p" placeholder="密码">
+        <button class="btn" onclick="doAuth('login')">登录</button>
+        <button class="btn" style="background:#666; margin-top:10px;" onclick="doAuth('register')">注册</button>
+    </div>
+
+    <div id="main" style="display:none;">
+        <div id="home" class="page active">
+            <div style="background:#1a1c1e; color:white; padding:30px 20px;">
+                <div id="st">正在核验局域网连接...</div>
+            </div>
+            <div style="padding:20px;">
+                <button class="btn" onclick="addPost()">发布动态</button>
+            </div>
+            <div id="list"></div>
+        </div>
+        <nav class="nav">
+            <div class="nav-item" onclick="alert('社区已在主页集成')">社区</div>
+            <div class="nav-item" onclick="location.reload()">刷新</div>
+        </nav>
+    </div>
+
+    <script>
+        // 【关键】修改为你电脑的真实 IP
+        const API = "http://198.168.1.2:3000";
+        let user = "";
+
+        async function doAuth(type) {
+            const username = document.getElementById('u').value;
+            const password = document.getElementById('p').value;
+            try {
+                const res = await fetch(`${API}/api/${type}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (type === 'login') {
+                        user = username;
+                        document.getElementById('auth').style.transform = 'translateY(-100%)';
+                        document.getElementById('main').style.display = 'block';
+                        document.getElementById('st').innerText = `欢迎，${user}！局域网已连接`;
+                        load();
+                    } else { alert("注册成功，请登录"); }
+                } else { alert(data.message); }
+            } catch (e) { alert("连不上电脑后端，请确认电脑防火墙已关闭且 IP 正确"); }
+        }
+
+        async function load() {
+            const res = await fetch(`${API}/api/posts`);
+            const posts = await res.json();
+            document.getElementById('list').innerHTML = posts.map(p => `
+                <div class="post"><b>${p.author}</b><br>${p.content}</div>
+            `).join('');
+        }
+
+        async function addPost() {
+            const c = prompt("说点什么？");
+            if (c) {
+                await fetch(`${API}/api/posts`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ author: user, content: c })
+                });
+                load();
+            }
+        }
+    </script>
+</body>
+</html>
