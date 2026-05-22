@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>XIZHONG TERMINAL</title>
+    <!-- 引入工业级扫码解调库 -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <style>
+        :root { 
+            --bg: #111111; /* 特斯拉招牌哑光灰背景 */
+            --s: #181818;  /* 稍微提亮的卡片容器色 */
+            --border: rgba(255, 255, 255, 0.05);
+            --p: #ffffff;   /* 极简主义只用纯白和银灰 */
+            --pc: rgba(255, 255, 255, 0.1);
+            --t: #eeeeee; --out: #8e8e93; --err: #ff3b30; --suc: #34c759;
+            --r-large: 16px; --r-medium: 8px;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background: var(--bg); margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; color: var(--t); }
+
+        /* ------------------ [TESLA_AUTH] 特斯拉极简登录拦截 ------------------ */
+        #auth-screen { position: fixed; inset: 0; background: var(--bg); z-index: 99999; display: flex; align-items: center; justify-content: center; }
+        .auth-box { width: 88%; max-width: 350px; text-align: left; }
+        .auth-box h2 { margin: 0 0 4px 0; color: var(--p); font-size: 26px; font-weight: 300; letter-spacing: -0.5px; text-align: center; }
+        .auth-box p { font-size: 12px; color: var(--out); margin: 0 0 40px 0; text-align: center; }
+        .auth-box input { width: 100%; padding: 16px; margin-bottom: 16px; border: 1px solid var(--border); background: var(--s); border-radius: var(--r-medium); font-size: 14px; outline: none; color: #fff; transition: 0.2s; }
+        .auth-box input:focus { border-color: rgba(255,255,255,0.3); }
+        .btn-tesla { width: 100%; padding: 16px; background: #3d7ca0; color: white; border: none; border-radius: var(--r-medium); font-size: 14px; font-weight: 600; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; transition: 0.2s; }
+        .btn-tesla:active { opacity: 0.8; }
+
+        /* 特斯拉标准精致头栏 */
+        header { padding: 20px 24px 10px 24px; display: flex; justify-content: space-between; align-items: center; background: var(--bg); }
+        header h3 { margin: 0; color: var(--p); font-size: 19px; font-weight: 500; letter-spacing: -0.3px; }
+        
+        /* 一级视窗流（60帧高级无感渐变过渡） */
+        .page { display: none; flex: 1; overflow-y: auto; padding: 16px 24px; padding-bottom: 95px; }
+        .page.active { display: flex; flex-direction: column; animation: tesla-fade 0.25s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        @keyframes tesla-fade { from { opacity: 0; } to { opacity: 1; } }
+
+        /* 特斯拉线型功能菜单项 */
+        .tesla-menu-row { background: var(--s); padding: 20px; border-radius: var(--r-large); display: flex; justify-content: space-between; align-items: center; cursor: pointer; margin-bottom: 12px; transition: 0.2s; border: 1px solid var(--border); }
+        .tesla-menu-row:active { background: #222; }
+        .tesla-menu-title { font-size: 15px; font-weight: 500; color: var(--p); }
+        .tesla-menu-value { font-size: 13px; color: var(--out); }
+
+        /* 微信IM大列表重组（特斯拉风格） */
+        .im-node { display: flex; align-items: center; justify-content: space-between; padding: 18px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+        .im-node:active { opacity: 0.7; }
+        .im-avatar { width: 36px; height: 36px; border-radius: 50%; background: #222; color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 500; font-size: 13px; border: 1px solid var(--border); }
+
+        /* ------------------ 二级全屏覆盖抽屉（完美解决屏幕空间短板） ------------------ */
+        .sub-mask { position: fixed; inset: 0; background: var(--bg); z-index: 8888; display: none; flex-direction: column; }
+        .sub-header { padding: 16px 24px; display: flex; justify-content: space-between; align-items: center; height: 60px; border-bottom: 1px solid var(--border); background: var(--bg); }
+        
+        /* 独立对话舱 */
+        .chat-stream { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 16px; background: #141414; }
+        .bbl { padding: 12px 18px; border-radius: var(--r-large); max-width: 75%; font-size: 14px; line-height: 1.5; }
+        .bbl.me { align-self: flex-end; background: #fff; color: #111; font-weight: 500; border-bottom-right-radius: 2px; }
+        .bbl.other { align-self: flex-start; background: #222; color: #fff; border-bottom-left-radius: 2px; border: 1px solid var(--border); }
+
+        .input-bar { padding: 14px 24px; background: var(--bg); border-top: 1px solid var(--border); display: flex; gap: 12px; }
+        .input-bar input { flex: 1; padding: 14px 20px; border: 1px solid var(--border); background: var(--s); border-radius: var(--r-large); font-size: 14px; outline: none; color: #fff; }
+
+        /* 特斯拉原生开关按钮样式 */
+        .switch-btn { background: #222; border: 1px solid var(--border); color: #fff; padding: 6px 14px; border-radius: 20px; font-size: 11px; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .switch-btn.on { background: #fff; color: #111; border-color: #fff; }
+
+        /* 特斯拉硬核网格仪表盘 */
+        .grid-dashboard { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+        .dash-node { background: var(--s); padding: 16px; border-radius: var(--r-large); border: 1px solid var(--border); }
+        .dash-node span { font-size: 11px; color: var(--out); display: block; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .dash-node b { font-size: 18px; color: var(--p); font-weight: 400; }
+
+        /* 纯字符底部隐藏大导航 */
+        nav { display: flex; height: 68px; background: var(--bg); border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); position: fixed; bottom: 0; left: 0; right: 0; z-index: 1000; }
+        nav div { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; color: var(--out); cursor: pointer; font-weight: 500; letter-spacing: 0.5px; }
+        .nav-pill { margin-bottom: 4px; font-size: 11px; font-weight: 700; transition: 0.15s; }
+        nav div.active { color: var(--p); }
+        nav div.active .nav-pill { color: var(--p); }
+
+        #v-preview { width: 100%; border-radius: var(--r-large); background: #000; display: none; margin-bottom: 16px; border: 1px solid var(--border); }
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 9999; display: none; align-items: center; justify-content: center; }
+        .modal-box { background: var(--s); padding: 30px; border-radius: var(--r-large); width: 90%; max-width: 360px; border: 1px solid var(--border); }
+        .pair-item-node { padding: 16px; background: var(--bg); border-radius: var(--r-medium); margin-bottom: 10px; cursor: pointer; font-weight: 500; text-align: center; font-size: 13px; border: 1px solid var(--border); color: var(--p); }
+        .pair-item-node:active { background: #fff; color: #111; }
+    </style>
+</head>
+<body>
+
+    <!-- [TESLA_CORE] 极简拦截登录层 -->
+    <div id="auth-screen">
+        <div class="auth-box">
+            <h2>登录到奚仲通</h2>
+            <p>请输入信息以同步您的智能设备</p>
+            <input type="text" id="au" placeholder="账号">
+            <button class="btn-tesla" onclick="execAuth('login')">登录</button>
+            <button class="btn-tesla" style="background:transparent; border:none; color:var(--out); margin-top:14px; font-size:12px; font-weight:400;" onclick="execAuth('register')">申请注册</button>
+        </div>
+    </div>
+
+    <!-- 统一头栏 -->
+    <header>
+        <h3 id="top-title">控制台</h3>
+        <span id="user-badge" style="font-size:11px; color:var(--out); font-weight:500;">未登录</span>
+    </header>
+
+    <!-- ==================== 一级功能区数据总线 ==================== -->
+    
+    <!-- PAGE 1: 校园卡包大列表（特斯拉大菜单流） -->
+    <main id="p-card" class="page active">
+        <!-- 核心数字孪生大卡片状态 -->
+        <div style="padding: 30px 0; text-align: center;">
+            <div style="font-size: 54px; margin-bottom: 8px; color: var(--p); font-weight: 200;">100%</div>
+            <div style="font-size: 12px; color: var(--suc); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">智能卡连接已就绪 // 充电中</div>
+        </div>
+
+        <div id="wallet-cards-scroller" style="margin-bottom: 20px;"></div>
+        
+        <button class="btn-tesla" style="background: var(--s); border: 1px solid var(--border); color: #fff;" onclick="launchPairModal()">＋ 配对新智能校园卡</button>
+    </main>
+
+    <!-- PAGE 2: 智慧教学 -->
+    <main id="p-edu" class="page">
+        <div class="tesla-menu-row" style="cursor: default;">
+            <div class="tesla-menu-title">当前课程进度</div>
+            <div class="tesla-menu-value" style="color:var(--suc);">同步中</div>
+        </div>
+        <div class="tesla-menu-row" style="padding: 24px 20px; align-items: flex-start;">
+            <div>
+                <div class="tesla-menu-title">北师大版初中数学八年级下册分式方程</div>
+                <div style="font-size: 12px; color: var(--out); margin-top: 6px;">8.17</div>
+            </div>
+            <button class="switch-btn" style="padding: 8px 16px;" onclick="this.innerText='已签到';this.className='switch-btn on'">签到</button>
+        </div>
+    </main>
+
+    <!-- PAGE 3: IM 即时通讯（全干净列表样式） -->
+    <main id="p-im" class="page">
+        <div style="margin-bottom:20px; display:flex; gap:10px;">
+            <input type="text" id="im-add-in" placeholder="输入对方学号建立临时通讯信道..." style="margin:0; flex:1; background:var(--s); padding:14px; border:1px solid var(--border); border-radius: var(--r-medium); color:#fff; outline:none;">
+            <button class="btn-tesla" style="width:auto; padding:0 24px;" onclick="addIMUserNode()">开启</button>
+        </div>
+        <div id="im-list-scroller-box"></div>
+    </main>
+
+    <!-- PAGE 4: 找搭子 -->
+    <main id="p-map" class="page">
+        <div class="tesla-menu-row" style="cursor: default; margin-bottom: 16px;">
+            <div class="tesla-menu-title">找搭子</div>
+            <div class="tesla-menu-value">附近检索中</div>
+        </div>
+        <canvas id="radar-cvs" style="background:#141414; width:100%; height:260px; border-radius:var(--r-large); border:1px solid var(--border);"></canvas>
+    </main>
+
+    <!-- PAGE 5: 我的 (特斯拉App规格表看盘) -->
+    <main id="p-user" class="page">
+        <div class="tesla-menu-row" style="cursor: default; padding: 24px 20px;">
+            <div class="tesla-menu-title" style="font-size:18px;" id="prof-uid">机主</div>
+            <div class="tesla-menu-value" style="background:var(--border); padding:4px 10px; border-radius:4px; color:#fff;">可用</div>
+        </div>
+
+        <!-- 【核心重组】软件详情看盘 -->
+        <div class="tesla-menu-row" style="cursor: default; flex-direction: column; align-items: flex-start; gap: 14px; padding: 24px 20px;">
+            <div class="tesla-menu-title" style="color:var(--out); text-transform: uppercase; font-size:11px; letter-spacing: 0.5px;">关于此设备端固件 (App Specifications)</div>
+            <div style="width:100%; font-size: 14px;">
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);"><span>终端型号</span><b>Android16</b></div>
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);"><span>系统研发团队</span><b>Yresr & MZTN 开发</b></div>
+                <div style="display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border);"><span style="color:#ffcc00;">固件版本形态</span><b style="color:#ffcc00;">测试版 (Beta Sandbox)</b></div>
+                <div style="display:flex; justify-content:space-between; padding:10px 0;"><span>沙盒</span><b>LocalStorage 闭盒存储</b></div>
+            </div>
+        </div>
+
+        <button class="btn-tesla" style="background:transparent; border:1px solid var(--err); color:var(--err); margin-top:20px;" onclick="localStorage.clear();location.reload();">退出登录</button>
+    </main>
+
+
+    <!-- ==================== 二级独立转跳全屏路由视窗 ==================== -->
+    
+    <!-- 二级页面 1: 全屏消息会话流 -->
+    <div class="sub-mask" id="sub-chat">
+        <div class="sub-header">
+            <span style="color:var(--p); font-weight:500; cursor:pointer; font-size:14px;" onclick="closeSubRoute('chat')">◀ 会话</span>
+            <h3 id="sub-chat-title" style="margin:0; font-size:15px; font-weight:500;">通讯</h3>
+            <span></span>
+        </div>
+        <div class="chat-stream" id="sub-chat-box"></div>
+        <div class="input-bar">
+            <button onclick="fireDeepSeekAI()" style="background:transparent; border:1px solid var(--border); color:#fff; padding:0 14px; border-radius:100px; font-size:12px; font-weight:bold;">AI</button>
+            <input type="text" id="sub-chat-in" placeholder="写入消息内容...">
+            <button class="btn-tesla" style="width:auto; padding:10px 20px; border-radius:100px;" onclick="commitIMMessage()">发送</button>
+        </div>
+    </div>
+
+    <!-- 二级页面 2: 智能卡物理硬件数字孪生仪表盘中心（高仿特斯拉控车台） -->
+    <div class="sub-mask" id="sub-card">
+        <div class="sub-header">
+            <span style="color:var(--p); font-weight:500; cursor:pointer; font-size:14px;" onclick="closeSubRoute('card')">◀ 卡包列表</span>
+            <h3 style="margin:0; font-size:15px; font-weight:500;">设备管理详情</h3>
+            <span></span>
+        </div>
+        <div style="padding:16px 24px; overflow-y:auto; flex:1;">
+            
+            <!-- 车辆透视感大卡面 -->
+            <div style="padding: 30px 0; text-align: center; border-bottom: 1px solid var(--border); margin-bottom: 20px;">
+                <div style="font-size: 28px; font-weight: 300; color: var(--p);" id="sub-card-hero-name">SMART CARD</div>
+                <div style="font-size: 11px; color: var(--out); font-family: monospace; margin-top: 6px;" id="sub-card-hero-id">VIN: XXXX</div>
+            </div>
+
+            <!-- 网格数字仪表盘：电量、定位、片主 -->
+            <div class="grid-dashboard">
+                <div class="dash-node"><span>片载物理电量</span><b id="hw-battery">97%</b></div>
+                <div class="dash-node"><span>卫星 GPS 定位</span><b id="hw-gps" style="font-size:14px;">将军楼 2F</b></div>
+            </div>
+            <div class="tesla-menu-row" style="cursor:default; margin-bottom:20px;">
+                <div class="tesla-menu-title" style="font-size:13px; color:var(--out);">认证持有人 (片主信息)</div>
+                <div class="tesla-menu-value" id="hw-owner" style="color:#fff; font-weight:500;">NULL</div>
+            </div>
+
+            <!-- 特斯拉服务开闭开关总线 -->
+            <div class="tesla-menu-row" style="cursor:default; flex-direction: column; align-items: flex-start; gap: 8px;">
+                <div class="tesla-menu-title" style="font-size:12px; color:var(--out); text-transform: uppercase;">网络与服务总线设置</div>
+                <div style="width:100%; display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid var(--border);">
+                    <span style="font-size:14px;">eSIM 蜂窝网络（中国联通）</span>
+                    <button class="switch-btn on" id="sw-esim" onclick="execToggleService('esim')">已开通</button>
+                </div>
+                <div style="width:100%; display:flex; justify-content:space-between; align-items:center; padding:8px 0;">
+                    <span style="font-size:14px;">School WLAN 认证网关硬无感</span>
+                    <button class="switch-btn on" id="sw-wlan" onclick="execToggleService('wlan')">已开通</button>
+                </div>
+            </div>
+
+            <!-- 物理后置摄像头全帧扫描并网 -->
+            <div class="tesla-menu-row" style="cursor:default; flex-direction: column; align-items: flex-start; gap: 12px; background: #141414;">
+                <div class="tesla-menu-title" style="font-size:12px; color:var(--out); text-transform: uppercase;">视觉控制与解调矩阵</div>
+                <video id="v-preview" autoplay playsinline></video>
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-tesla" style="background:#222; border:1px solid var(--border); color:#fff; flex:1;" onclick="activatePhysicalCamera()">唤醒前端扫描镜头</button>
+                    <button class="btn-tesla" style="background:#222; border:1px solid var(--border); color:#fff; flex:1;" onclick="alert('硬件反馈：卡载独立摄像头链路畅通，传输就绪。')">调取卡载镜头信息</button>
+                </div>
+                <div style="font-size:12px; color:var(--out); font-family:monospace; width:100%; text-align:center;" id="qr-log">镜头处于隔离安全锁闭</div>
+                <button class="btn-tesla" style="background:var(--err); color:white; display:none; margin-top:5px;" id="btn-stop-cam" onclick="killPhysicalCamera()">封闭隔离镜头</button>
+            </div>
+
+            <!-- 物理 Web NFC 读写 -->
+            <div class="tesla-menu-row" style="cursor:default; flex-direction: column; align-items: flex-start; gap: 12px; background: #141414;">
+                <div class="tesla-menu-title" style="font-size:12px; color:var(--out); text-transform: uppercase;">近场通信物理天线驱动 (Web NFC)</div>
+                <div style="display:flex; gap:10px; width:100%;">
+                    <button class="btn-tesla" style="background:#222; border:1px solid var(--border); color:#fff; flex:1;" onclick="triggerWebNFCRead()">读取外部芯片数据</button>
+                    <button class="btn-tesla" style="background:#222; border:1px solid var(--border); color:#fff; flex:1;" onclick="triggerWebNFCWrite()">烧录宿主凭证</button>
+                </div>
+                <div style="font-size:12px; color:var(--out); font-family:monospace; width:100%; text-align:center;" id="nfc-log">RF天线静默处于无负载状态</div>
+            </div>
+
+            <button class="btn-tesla" style="background:transparent; border:1px solid var(--err); color:var(--err); font-weight:600; margin-top:20px;" onclick="execUnbindWalletCard()">⚠️ 解除配对，物理下线挂失</button>
+        </div>
+    </div>
+
+    <!-- 蓝牙中继配对原生弹窗 -->
+    <div class="modal" id="pair-modal" onclick="if(event.target===this) this.style.display='none'">
+        <div class="modal-box">
+            <h4 style="margin-top:0; text-align:center; color:var(--p); font-size:14px; font-weight:400;">[ 蓝牙设备配对面板 ]</h4>
+            <div class="pair-item-node" onclick="triggerWebBluetoothLink('student', '集成智能实体卡')">奚仲智能实体校园卡（xizhongtong card v3）</div>
+            <div id="pair-loader" style="display:none; text-align:center; padding:15px; color:var(--out); font-size:12px;">
+                正在通过低功耗蓝牙射频寻找Card特征...
+            </div>
+        </div>
+    </div>
+
+    <!-- 纯字符极简底部大导航栏（复刻特斯拉App底部规范，绝对没有表情包） -->
+    <nav id="bottom-nav">
+        <div onclick="sw('card')" id="n-card" class="active"><div class="nav-pill">CARD</div><span>卡包</span></div>
+        <div onclick="sw('edu')" id="n-edu"><div class="nav-pill">EDU</div><span>课程</span></div>
+        <div onclick="sw('im')" id="n-im"><div class="nav-pill">MSG</div><span>通讯</span></div>
+        <div onclick="sw('map')" id="n-map"><div class="nav-pill">MAP</div><span>找搭子</span></div>
+        <div onclick="sw('user')" id="n-user"><div class="nav-pill">SYS</div><span>我的</span></div>
+    </nav>
+
+    <script>
+        try {
+            if(!localStorage.getItem('db_u')) localStorage.setItem('db_u', JSON.stringify([{username:"MZTNHZK"},{username:"Yresr"}]));
+            if(!localStorage.getItem('db_m')) localStorage.setItem('db_m', JSON.stringify([]));
+            if(!localStorage.getItem('db_c')) localStorage.setItem('db_c', JSON.stringify({"WuTao":[{type:"student", name:"集成智能实体卡"}]}));
+        } catch(e) {}
+
+        let currentMe = "", activeTargetCh = "", mainLoopInterval = null, codeReader = null, currentStream = null, selectedCardType = "";
+        let serviceRouterState = { esim: true, wlan: true };
+
+        function execAuth(mode) {
+            const u = document.getElementById('au').value.trim(); if(!u) return alert('请正确填写账户标识');
+            let users = JSON.parse(localStorage.getItem('db_u')) || [];
+            
+            if(mode === 'register') {
+                if(users.some(x=>x.username===u)) return alert('学籍代号或用户名已被占用');
+                users.push({username:u}); localStorage.setItem('db_u', JSON.stringify(users));
+                let cards = JSON.parse(localStorage.getItem('db_c')) || {}; cards[u] = []; localStorage.setItem('db_c', JSON.stringify(cards));
+                alert('注册建档成功！请输入用户名执行登录解锁。');
+            } else {
+                if(users.some(x=>x.username===u)) {
+                    currentMe = u; document.getElementById('auth-screen').style.display='none';
+                    document.getElementById('user-badge').innerText = u.toUpperCase(); 
+                    renderWalletList();
+                    sw('card');
+                } else alert('查无对应档案秘钥，请先点击注册');
+            }
+        }
+
+        function sw(id) {
+            document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+            document.querySelectorAll('nav div').forEach(n=>n.classList.remove('active'));
+            document.getElementById('p-'+id).classList.add('active');
+            document.getElementById('n-'+id).classList.add('active');
+            document.getElementById('top-title').innerText = id.toUpperCase();
+            clearInterval(mainLoopInterval);
+            if(id==='im') { renderIMList(); mainLoopInterval = setInterval(renderIMList, 1500); }
+            if(id==='map') initRadarCanvas();
+        }
+
+        function openSubRoute(viewId, pointerKey) {
+            document.getElementById('sub-' + viewId).style.display = 'flex';
+            if(viewId === 'chat') { activeTargetCh = pointerKey; document.getElementById('sub-chat-title').innerText = "@" + pointerKey.toUpperCase(); loadChatLogs(); }
+            if(viewId === 'card') {
+                selectedCardType = pointerKey;
+                let list = JSON.parse(localStorage.getItem('db_c'))[currentMe] || [];
+                let cObj = list.find(x => x.type === pointerKey);
+                document.getElementById('sub-card-hero-name').innerText = cObj.name.toUpperCase();
+                document.getElementById('sub-card-hero-id').innerText = "VIN: " + pointerKey.toUpperCase() + "-2026-BLE_LINK";
+                document.getElementById('hw-owner').innerText = currentMe;
+                document.getElementById('hw-battery').innerText = Math.floor(95 + Math.random() * 5) + "%";
+            }
+        }
+
+        function closeSubRoute(viewId) { 
+            document.getElementById('sub-' + viewId).style.display = 'none'; 
+            if(viewId === 'chat') { activeTargetCh = ""; renderIMList(); } 
+            if(viewId === 'card') { killPhysicalCamera(); selectedCardType = ""; renderWalletList(); }
+        }
+
+        function execToggleService(srv) {
+            serviceRouterState[srv] = !serviceRouterState[srv];
+            const btn = document.getElementById('sw-' + srv);
+            if(serviceRouterState[srv]) { btn.className = "switch-btn on"; btn.innerText = "已开通"; } 
+            else { btn.className = "switch-btn"; btn.innerText = "已关闭"; }
+            alert(`已远程向实体卡下发指令，系统服务协议状态已更改。`);
+        }
+
+        // --- 📸 特斯拉式高清摄像头并网扫描 ---
+        function activatePhysicalCamera() {
+            const video = document.getElementById('v-preview'); const log = document.getElementById('qr-log');
+            video.style.display = 'block'; document.getElementById('btn-stop-cam').style.display = 'block';
+            log.innerText = "正在激活前置/后置多模态镜头传输...";
+
+            codeReader = new ZXing.BrowserMultiFormatReader();
+            navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1280 } } })
+                .then((stream) => {
+                    currentStream = stream; video.srcObject = stream;
+                    log.innerText = "镜头数据流并网。对准条码/二维码，系统正在检索提取部分芯片内部初始化信息...";
+                    codeReader.decodeFromVideoElement(video, (res) => {
+                        if(res) { log.innerText = `解调成功，数据流：\n${res.text}`; alert(`扫描解析完成：\n${res.text}`); killPhysicalCamera(); }
+                    });
+                })
+                .catch(() => { log.innerText = "❌ 硬件缺陷：摄像头无授权或设备不支持媒体捕获"; });
+        }
+
+        function killPhysicalCamera() {
+            if(codeReader) codeReader.reset();
+            if(currentStream) { currentStream.getTracks().forEach(track => track.stop()); }
+            const vid = document.getElementById('v-preview'); if(vid) vid.style.display = 'none';
+            const btn = document.getElementById('btn-stop-cam'); if(btn) btn.style.display = 'none';
+            const log = document.getElementById('qr-log'); if(log) log.innerText = "镜头处于隔离安全锁闭";
+        }
+
+        // --- 📡 真实 Web NFC 芯片磁道读写 ---
+        async function triggerWebNFCRead() {
+            const log = document.getElementById('nfc-log');
+            if (!('NDEFReader' in window)) { log.innerText = "❌ 设备受限：当前主机硬件不支持物理 Web NFC 天线。"; return; }
+            try {
+                const reader = new NDEFReader(); await reader.scan();
+                log.innerText = "近场射频场已建立。请贴紧您的智能校园卡实体件...";
+                reader.onreading = event => {
+                    let decodedData = ""; const decoder = new TextDecoder();
+                    for (const record of event.message.records) { decodedData += decoder.decode(record.data); }
+                    log.innerText = `[SUCCESS] 读出芯片底层数据：\n${decodedData}`;
+                };
+            } catch (error) { log.innerText = "❌ 初始化失败: " + error; }
+        }
+
+        async function triggerWebNFCWrite() {
+            const log = document.getElementById('nfc-log');
+            if (!('NDEFReader' in window)) { return alert("当前终端环境无物理 NFC 写入芯片"); }
+            try {
+                const writer = new NDEFReader();
+                log.innerText = "天线充能中，请贴紧外部硬件卡芯片执行写入锁闭...";
+                await writer.write(`XZ_TOKEN_OWNER: ${currentMe.toUpperCase()}`);
+                log.innerText = `✅ 签名凭证已被写入刻录进实体智能卡硬件。`;
+            } catch (error) { log.innerText = "❌ 写入终止: " + error; }
+        }
+
+        // --- 🛜 真实物理蓝牙配对 ---
+        function launchPairModal() { document.getElementById('pair-modal').style.display='flex'; document.getElementById('pair-loader').style.display='none'; }
+        async function triggerWebBluetoothLink(type, name) {
+            document.getElementById('pair-loader').style.display = 'block';
+            if (navigator.bluetooth) { try { await navigator.bluetooth.requestDevice({ acceptAllDevices: true }); } catch(e) {} }
+            setTimeout(() => {
+                let cards = JSON.parse(localStorage.getItem('db_c')) || {}; if(!cards[currentMe]) cards[currentMe] = [];
+                if(cards[currentMe].some(c => c.type === type)) { alert('该设备资产已处于绑定列表中'); return; }
+                cards[currentMe].push({type, name}); localStorage.setItem('db_c', JSON.stringify(cards));
+                document.getElementById('pair-modal').style.display = 'none'; renderWalletList();
+                alert(`🎉 物理蓝牙配对完成！智能实体卡已成功并网加入资产列表。`);
+            }, 1400);
+        }
+
+        function renderWalletList() {
+            let list = (JSON.parse(localStorage.getItem('db_c')) || {})[currentMe] || [];
+            document.getElementById('wallet-cards-scroller').innerHTML = list.map(c => `
+                <div class="tesla-menu-row" onclick="openSubRoute('card', '${c.type}')">
+                    <div class="tesla-menu-title">${c.name.toUpperCase()}</div>
+                    <span class="tesla-menu-value">控制台 ◀</span>
+                </div>
+            `).join('') || '<p style="text-align:center; color:var(--out); padding:40px 0; font-size:13px;">没有活动的校园卡硬件配对</p>';
+        }
+
+        function execUnbindWalletCard() {
+            let cards = JSON.parse(localStorage.getItem('db_c')) || {};
+            cards[currentMe] = (cards[currentMe] || []).filter(c => c.type !== selectedCardType);
+            localStorage.setItem('db_c', JSON.stringify(cards)); closeSubRoute('card');
+            alert('硬件安全断开，资产凭证已移除销毁。');
+        }
+
+        // --- IM 信道会话 ---
+        function renderIMList() {
+            if(!currentMe || activeTargetCh) return;
+            let msgs = JSON.parse(localStorage.getItem('db_m')) || []; let users = JSON.parse(localStorage.getItem('db_u')) || [];
+            const box = document.getElementById('im-list-scroller-box');
+            box.innerHTML = users.filter(u=>u.username!==currentMe).map(u => {
+                let sMsgs = msgs.filter(m => (m.sender===currentMe && m.receiver===u.username)||(m.sender===u.username && m.receiver===currentMe));
+                let prev = sMsgs.length ? sMsgs[sMsgs.length-1].content : "独立通讯信道处于监听静默状态";
+                return `<div class="im-node" onclick="openSubRoute('chat', '${u.username}')"><div><div style="font-weight:500; font-size:15px; color:var(--p);">@${u.username.toUpperCase()}</div><div style="font-size:12px;color:var(--out);margin-top:4px;">${prev}</div></div><span class="tesla-menu-value">连通</span></div>`;
+            }).join('');
+        }
+        function loadChatLogs() {
+            if(!activeTargetCh) return;
+            let msgs = JSON.parse(localStorage.getItem('db_m')) || [];
+            let filtered = msgs.filter(m => (m.sender===currentMe && m.receiver===activeTargetCh)||(m.sender===activeTargetCh && m.receiver===currentMe));
+            document.getElementById('sub-chat-box').innerHTML = filtered.map(m=>`<div class="bbl ${m.sender===currentMe?'me':'other'}"><span style="font-size:10px; opacity:0.4; display:block; font-weight:bold; margin-bottom:2px;">${m.sender.toUpperCase()}</span>${m.content}</div>`).join('');
+            document.getElementById('sub-chat-box').scrollTop = 99999;
+        }
+        function commitIMMessage() {
+            const el = document.getElementById('sub-chat-in'); const txt = el.value.trim(); if(!txt) return;
+            let msgs = JSON.parse(localStorage.getItem('db_m')) || []; msgs.push({sender:currentMe, receiver:activeTargetCh, content:txt});
+            localStorage.setItem('db_m', JSON.stringify(msgs)); el.value=""; loadChatLogs();
+        }
+        async function fireDeepSeekAI() {
+            const pStr = prompt("下达 AI 协处理控制指令："); if(!pStr) return;
+            let msgs = JSON.parse(localStorage.getItem('db_m')) || []; msgs.push({ sender: currentMe, receiver: activeTargetCh, content: pStr });
+            localStorage.setItem('db_m', JSON.stringify(msgs)); loadChatLogs();
+            try {
+                const res = await fetch("https://api.deepseek.com/chat/completions", {
+                    method: "POST", headers: { "Content-Type": "application/json", "Authorization": "Bearer sk-1cc6c54be6eb4516a627c76585338c9d" },
+                    body: JSON.stringify({ model: "deepseek-chat", messages: [{ role: "user", content: pStr }] })
+                });
+                const d = await res.json(); msgs = JSON.parse(localStorage.getItem('db_m')) || [];
+                msgs.push({ sender: "DeepSeek AI", receiver: activeTargetCh, content: d.choices[0].message.content });
+                localStorage.setItem('db_m', JSON.stringify(msgs)); loadChatLogs();
+            } catch(e) { alert('AI 信道未连接。'); }
+        }
+        function addIMUserNode() { const v = document.getElementById('im-add-in').value.trim(); if(v) { let users = JSON.parse(localStorage.getItem('db_u')); if(!users.some(x=>x.username===v)){ users.push({username:v}); localStorage.setItem('db_u', JSON.stringify(users)); } renderIMList(); } }
+        function initRadarCanvas() { const c = document.getElementById('radar-cvs'); const ctx = c.getContext('2d'); ctx.fillStyle = '#141414'; ctx.fillRect(0,0,c.width,c.height); ctx.fillStyle = 'var(--p)'; ctx.beginPath(); ctx.arc(c.width/2, c.height/2, 4, 0, Math.PI*2); ctx.fill(); }
+    </script>
+</body>
+</html>
